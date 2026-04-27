@@ -628,10 +628,11 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return  # ← ВАЖНО: return здесь
     
     # Меню без ответа
-    kb = [
+        kb = [
         [InlineKeyboardButton("📋 Реестр", callback_data="admin_list")],
         [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
-        [InlineKeyboardButton("🏦 Банк", callback_data="admin_bank_info")]
+        [InlineKeyboardButton("🏦 Банк", callback_data="admin_bank_info")],
+        [InlineKeyboardButton("🗑 Сбросить все игры", callback_data="admin_reset_games")]
     ]
     await update.message.reply_text("🛡 АДМИН-ПАНЕЛЬ", reply_markup=InlineKeyboardMarkup(kb))
 
@@ -673,7 +674,15 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"🏦 {total} RYS\n"
         for op in recent: text += f"• {op['reason']}: +{op['amount']}\n"
         await q.edit_message_text(text)
+    elif a == 'reset_games':
+        conn = get_db()
+        conn.execute("UPDATE cases SET status = 'finished' WHERE status IN ('waiting', 'active')")
+        conn.execute("UPDATE duels SET status = 'finished' WHERE status = 'waiting'")
+        conn.commit()
+        conn.close()
+        await q.edit_message_text("✅ Все активные игры завершены")
     elif a == 'broadcast': context.user_data['broadcast'] = True; await q.edit_message_text("📢 Сообщение для рассылки:")
+    
 
 async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
