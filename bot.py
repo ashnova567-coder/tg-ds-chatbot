@@ -702,17 +702,17 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif isinstance(err, RetryAfter): await asyncio.sleep(err.retry_after)
     else: logger.error(f"❌ {err}", exc_info=True)
 
-def main():
-    if not TOKEN: logger.error("❌ Нет токена"); return
+if __name__ == "__main__":
+    if not TOKEN:
+        logger.error("❌ Нет токена")
+        exit(1)
     
     app = Application.builder().token(TOKEN).connect_timeout(30).read_timeout(30).write_timeout(30).build()
     app.add_error_handler(error_handler)
     
     scheduler = AsyncIOScheduler(timezone=pytz.UTC)
     scheduler.add_job(weekly_reset, 'cron', day_of_week='mon', hour=0, minute=0)
-    scheduler.start()
     
-    # Команды
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("s_help", s_help_command))
     app.add_handler(CommandHandler("balance", balance_cmd))
@@ -723,7 +723,6 @@ def main():
     app.add_handler(CommandHandler("top", top_weekly))
     app.add_handler(CommandHandler("admin", admin_panel))
     
-    # Callback'и
     app.add_handler(CallbackQueryHandler(case_accept_callback, pattern="^case_accept_"))
     app.add_handler(CallbackQueryHandler(case_decline_callback, pattern="^case_decline_"))
     app.add_handler(CallbackQueryHandler(handle_case_open, pattern="^case_open_"))
@@ -733,13 +732,15 @@ def main():
     app.add_handler(CallbackQueryHandler(duel_info_callback, pattern="^duel_info_"))
     app.add_handler(CallbackQueryHandler(admin_callback, pattern="^admin_"))
     
-    # Сообщения — счётчик ПЕРВЫМ
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, count_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.REPLY, rep_command))
     app.add_handler(MessageHandler(filters.TEXT & filters.User(ADMIN_ID), handle_admin_text))
     
+    # Запуск шедулера внутри event loop
+    async def start_scheduler():
+        scheduler.start()
+    
+    app.post_init = start_scheduler
+    
     logger.info("✅ Бот запущен")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__ == "__main__":
-    main()
