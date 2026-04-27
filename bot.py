@@ -737,7 +737,8 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & filters.User(ADMIN_ID), handle_admin_text))
     
     # Запуск шедулера внутри event loop
-    async def start_scheduler():
+        # Запуск шедулера внутри event loop
+    async def start_scheduler(app):
         scheduler.start()
     
     app.post_init = start_scheduler
