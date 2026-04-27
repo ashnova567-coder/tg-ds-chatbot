@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ADMIN_ID = 123456789  # ← ЗАМЕНИ НА СВОЙ ID!
+ADMIN_ID = 1055271488  # ← ЗАМЕНИ НА СВОЙ ID!
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 SEND_COMMISSION = 0.01
