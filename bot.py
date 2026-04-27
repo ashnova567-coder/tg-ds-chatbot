@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-ADMIN_ID = 1055271488  # ← ЗАМЕНИ НА СВОЙ ID!
+ADMIN_ID = 123456789  # ← ЗАМЕНИ НА СВОЙ ID!
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 SEND_COMMISSION = 0.01
@@ -174,7 +174,8 @@ def update_user(user_id, **kwargs):
 def get_rank(exp):
     current = RANKS[0][1]
     for threshold, rank in RANKS:
-        if exp >= threshold: current = rank
+        if exp >= threshold:
+            current = rank
     return current
 
 def find_user_by_account(account):
@@ -218,41 +219,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
     await update.message.reply_text(
         f"👋 Привет, {update.effective_user.first_name}!\n\n"
-        f"📊 Счет: {user['account']}\n"
-        f"💰 Баланс: {user['rys']} RYS\n"
-        f"⭐ Репутация: {user['rep']}\n"
-        f"✨ EXP: {user['exp']}\n"
-        f"🎖 Ранг: {get_rank(user['exp'])}\n"
-        f"🏦 Банк: {get_bank_total()} RYS\n\n"
+        f"📊 Счет: {user['account']}\n💰 Баланс: {user['rys']} RYS\n"
+        f"⭐ Репутация: {user['rep']}\n✨ EXP: {user['exp']}\n"
+        f"🎖 Ранг: {get_rank(user['exp'])}\n🏦 Банк: {get_bank_total()} RYS\n\n"
         f"/s_help — список команд"
     )
 
 async def s_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📋 КОМАНДЫ БОТА\n"
-        "━━━━━━━━━━━━━━━━\n\n"
-        "💰 Финансы:\n"
-        "• /send GESH-XXXX [сумма] — перевод (1% в банк)\n"
-        "• /balance — баланс\n\n"
-        "🎲 Кейс-дуэль:\n"
-        "• /case [ставка] — 10 кейсов, приз x2\n\n"
-        "⚔️ Дуэль:\n"
-        "• /duel [ставка] — мгновенный бой\n\n"
-        "⭐ Репутация:\n"
-        "• +rep / -rep — ответом на сообщение\n\n"
-        "📊 Статистика:\n"
-        "• /stats / /top\n\n"
+        "📋 КОМАНДЫ БОТА\n━━━━━━━━━━━━━━━━\n\n"
+        "💰 Финансы:\n• /send GESH-XXXX [сумма] — перевод (1% в банк)\n• /balance — баланс\n\n"
+        "🎲 Кейс-дуэль (ответом на сообщение):\n• /case [ставка]\n\n"
+        "⚔️ Дуэль (ответом на сообщение):\n• /duel [ставка]\n\n"
+        "⭐ Репутация (ответом на сообщение):\n• +rep / -rep\n\n"
+        "📊 Статистика:\n• /stats / /top\n\n"
         "🏆 Недельный топ: понедельник 00:00 UTC\n"
         "🎖 Ранги: Пиздюк → Пиздун → Кайфун → Магистр → Легенда"
     )
 
 async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
-    await update.message.reply_text(
-        f"💰 {user['rys']} RYS\n"
-        f"📊 {user['account']}\n"
-        f"🏦 Банк: {get_bank_total()} RYS"
-    )
+    await update.message.reply_text(f"💰 {user['rys']} RYS\n📊 {user['account']}\n🏦 Банк: {get_bank_total()} RYS")
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
@@ -263,22 +250,16 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             next_rank = f"\n📈 До следующего: {t - user['exp']} XP"
             break
     await update.message.reply_text(
-        f"📊 СТАТИСТИКА\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"👤 {user['first_name']}\n"
-        f"📊 {user['account']}\n"
-        f"💰 {user['rys']} RYS | ⭐ {user['rep']} rep\n"
-        f"✨ {user['exp']} XP | 🎖 {get_rank(user['exp'])}{next_rank}\n"
+        f"📊 СТАТИСТИКА\n━━━━━━━━━━━━━━━━\n👤 {user['first_name']}\n📊 {user['account']}\n"
+        f"💰 {user['rys']} RYS | ⭐ {user['rep']} rep\n✨ {user['exp']} XP | 🎖 {get_rank(user['exp'])}{next_rank}\n"
         f"⚔️ Побед: {user['duels_won']} | 💀 Поражений: {user['duels_lost']}\n"
-        f"💬 За неделю: {weekly.get(str(update.effective_user.id), 0)}\n"
-        f"📝 Всего: {user['total_messages']}"
+        f"💬 За неделю: {weekly.get(str(update.effective_user.id), 0)}\n📝 Всего: {user['total_messages']}"
     )
 
 async def top_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
     weekly = get_weekly_messages()
     if not weekly:
-        await update.message.reply_text("📊 Нет данных за неделю")
-        return
+        await update.message.reply_text("📊 Нет данных за неделю"); return
     sorted_users = sorted(weekly.items(), key=lambda x: x[1], reverse=True)[:10]
     medals = ["🥇", "🥈", "🥉"] + [f"{i}." for i in range(4, 11)]
     text = "📊 НЕДЕЛЬНЫЙ ТОП\n━━━━━━━━━━━━━━━━\n"
@@ -301,7 +282,7 @@ async def send_rys(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ Сумма — положительное число"); return
     if sender['rys'] < amount:
-        await update.message.reply_text(f"❌ Недостаточно RYS"); return
+        await update.message.reply_text("❌ Недостаточно RYS"); return
     target = find_user_by_account(account)
     if not target:
         await update.message.reply_text("❌ Получатель не найден"); return
@@ -313,31 +294,37 @@ async def send_rys(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user(target['user_id'], rys=target['rys'] + received)
     add_to_bank(commission, f"Перевод {sender['account']} -> {account}")
     await update.message.reply_text(
-        f"✅ Перевод\n📤 {amount} | 💸 {commission} | 📥 {received}\n"
-        f"👤 {target['first_name']}\n💰 Баланс: {sender['rys'] - amount}"
+        f"✅ Перевод\n📤 {amount} | 💸 {commission} | 📥 {received}\n👤 {target['first_name']}\n💰 Баланс: {sender['rys'] - amount}"
     )
 
 # ==================== РЕПУТАЦИЯ ====================
 
 async def rep_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        await update.message.reply_text("❌ Ответь на сообщение"); return
+    if not update.message or not update.message.reply_to_message:
+        return
+    
     text = update.message.text.strip()
-    is_plus = text.startswith('+rep')
-    is_minus = text.startswith('-rep')
-    if not (is_plus or is_minus): return
+    if not (text.startswith('+rep') or text.startswith('-rep')):
+        return
+    
     sender = get_user(update.effective_user.id)
     target = get_user(update.message.reply_to_message.from_user.id)
+    
     if sender['user_id'] == target['user_id']:
-        await update.message.reply_text("❌ Нельзя себе"); return
+        await update.message.reply_text("❌ Нельзя себе")
+        return
+    
     parts = text.split()
     value = int(parts[1]) if len(parts) > 1 and parts[1].lstrip('-').isdigit() else 1
     if value <= 0:
-        await update.message.reply_text("❌ Положительное число"); return
-    if is_plus:
+        await update.message.reply_text("❌ Положительное число")
+        return
+    
+    if text.startswith('+rep'):
         cost = value
         if sender['rys'] < cost:
-            await update.message.reply_text(f"❌ Нужно {cost} RYS"); return
+            await update.message.reply_text(f"❌ Нужно {cost} RYS")
+            return
         update_user(sender['user_id'], rys=sender['rys'] - cost)
         update_user(target['user_id'], rep=target['rep'] + value)
         add_to_bank(cost, f"+rep {sender['first_name']} -> {target['first_name']}")
@@ -345,13 +332,14 @@ async def rep_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         cost = value * REP_MINUS_COST
         if sender['rys'] < cost:
-            await update.message.reply_text(f"❌ Нужно {cost} RYS"); return
+            await update.message.reply_text(f"❌ Нужно {cost} RYS")
+            return
         update_user(sender['user_id'], rys=sender['rys'] - cost)
         update_user(target['user_id'], rep=target['rep'] - value)
         add_to_bank(cost, f"-rep {sender['first_name']} -> {target['first_name']}")
         await update.message.reply_text(f"👎 -{value} rep -> {target['first_name']} 💸{cost} RYS")
 
-# ==================== КЕЙСЫ ====================
+# ==================== КЕЙС-ДУЭЛЬ ====================
 
 async def case_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
@@ -360,8 +348,7 @@ async def case_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     challenger = get_user(update.effective_user.id)
     opponent_user = update.message.reply_to_message.from_user
     if str(update.effective_user.id) == str(opponent_user.id):
-        await update.message.reply_text("❌ Нельзя с собой")
-        return
+        await update.message.reply_text("❌ Нельзя с собой"); return
     chat_id = str(update.effective_chat.id)
     if not context.args:
         await update.message.reply_text("❌ /case [ставка]"); return
@@ -426,19 +413,22 @@ async def case_decline_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await q.answer("❌ Нельзя отменить", show_alert=True); conn.close(); return
     case = dict(case)
     if user_id != case['creator_id']:
-        await q.answer("❌ Только создатель может отменить", show_alert=True); conn.close(); return
+        await q.answer("❌ Только создатель", show_alert=True); conn.close(); return
     update_user(case['creator_id'], rys=get_user(case['creator_id'])['rys'] + case['bet'])
     conn.execute("UPDATE cases SET status='declined' WHERE case_id=?", (case_id,)); conn.commit(); conn.close()
     await q.edit_message_text(f"❌ {case['creator_name']} отменил игру\n💰 {case['bet']} RYS возвращены")
 
 def build_case_buttons(case, case_id):
     opened = json.loads(case['opened']) if isinstance(case['opened'], str) else case['opened']
-    rem = 10 - sum(opened); kb = []
+    rem = 10 - sum(opened)
+    kb = []
     for i in range(0, 10, 5):
         row = []
         for j in range(i, i+5):
-            if opened[j]: row.append(InlineKeyboardButton(f"❌ {j+1}", callback_data="noop"))
-            else: row.append(InlineKeyboardButton(f"{'🎯' if rem==1 else '🎁'} {j+1}", callback_data=f"case_open_{case_id}_{j}"))
+            if opened[j]:
+                row.append(InlineKeyboardButton(f"❌ {j+1}", callback_data="noop"))
+            else:
+                row.append(InlineKeyboardButton(f"{'🎯' if rem==1 else '🎁'} {j+1}", callback_data=f"case_open_{case_id}_{j}"))
         kb.append(row)
     kb.append([InlineKeyboardButton("ℹ️", callback_data=f"case_info_{case_id}")])
     return kb
@@ -482,9 +472,8 @@ async def handle_case_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = build_case_buttons({**case, 'opened': opened}, case_id)
         rem = 10 - sum(opened)
         await q.edit_message_text(
-            f"🎲 КЕЙС-ДУЭЛЬ\n👤 {case['creator_name']} vs {case['opponent_name']}\n"
-            f"💵 {case['bet']} | 🏆 {case['prize']}\n🎮 {sum(opened)}/10 (ост. {rem})\n"
-            f"👤 Ход: {cur_player['first_name']}{' ⚠️ 100% победа!' if rem==1 else ''}",
+            f"🎲 КЕЙС-ДУЭЛЬ\n👤 {case['creator_name']} vs {case['opponent_name']}\n💵 {case['bet']} | 🏆 {case['prize']}\n"
+            f"🎮 {sum(opened)}/10 (ост. {rem})\n👤 Ход: {cur_player['first_name']}{' ⚠️ 100% победа!' if rem==1 else ''}",
             reply_markup=InlineKeyboardMarkup(kb)
         )
 
@@ -503,7 +492,7 @@ def build_final_buttons(case, opened, win_box):
 async def case_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer("🎲 2 игрока, 10 кейсов, 1 приз x2\nПоследний кейс = 100% победа!", show_alert=True)
 
-# ==================== ДУЭЛИ ====================
+# ==================== ДУЭЛЬ ====================
 
 async def duel_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
@@ -553,6 +542,9 @@ async def duel_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await q.answer("❌ Жди противника или нажми Отклонить", show_alert=True); conn.close(); return
     if user_id != duel['opponent_id']:
         await q.answer("❌ Этот вызов не тебе", show_alert=True); conn.close(); return
+    opponent = get_user(user_id)
+    if opponent['rys'] < duel['bet']:
+        await q.answer(f"❌ Нужно {duel['bet']} RYS", show_alert=True); conn.close(); return
     await q.answer("⚔️ Бой!")
     update_user(user_id, rys=opponent['rys'] - duel['bet'])
     challenger = get_user(duel['challenger_id'])
@@ -563,8 +555,8 @@ async def duel_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     update_user(winner_id, rys=w['rys']+duel['prize'], duels_won=w['duels_won']+1)
     update_user(loser_id, duels_lost=l['duels_lost']+1)
     conn.execute(
-        "UPDATE duels SET opponent_id=?, opponent_name=?, status='finished', winner_id=?, finished_at=CURRENT_TIMESTAMP WHERE duel_id=?",
-        (user_id, opponent['first_name'], winner_id, duel_id)
+        "UPDATE duels SET status='finished', winner_id=?, finished_at=CURRENT_TIMESTAMP WHERE duel_id=?",
+        (winner_id, duel_id)
     ); conn.commit(); conn.close()
     ev = random.choice(["💥 Мощный удар!","🎯 Точный выстрел!","👊👊👊 Серия!","🔄 Контратака!","💫 Нокаут!","⚡ Молния!","🌪 Вихрь!"])
     await q.edit_message_text(
@@ -575,7 +567,7 @@ async def duel_decline_callback(update: Update, context: ContextTypes.DEFAULT_TY
     q = update.callback_query; duel_id = q.data.split('_')[2]; user_id = str(q.from_user.id)
     conn = get_db(); duel = conn.execute("SELECT * FROM duels WHERE duel_id = ?", (duel_id,)).fetchone()
     if not duel or duel['status'] != 'waiting' or user_id != duel['challenger_id']:
-        await q.answer("❌ Нельзя", show_alert=True); conn.close(); return
+        await q.answer("❌ Только создатель", show_alert=True); conn.close(); return
     update_user(duel['challenger_id'], rys=get_user(duel['challenger_id'])['rys'] + duel['bet'])
     conn.execute("UPDATE duels SET status='declined' WHERE duel_id=?", (duel_id,)); conn.commit(); conn.close()
     await q.edit_message_text(f"❌ Отменена\n💰 {duel['bet']} RYS возвращены")
@@ -586,26 +578,20 @@ async def duel_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ==================== СЧЁТЧИК СООБЩЕНИЙ ====================
 
 async def count_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Считает все текстовые сообщения от 2 символов"""
     if not update.message or not update.message.text:
         return
-    
     user_id = update.effective_user.id
     username = update.effective_user.username
     first_name = update.effective_user.first_name
-    
-    # Авто-регистрация
     ensure_user(user_id, username, first_name)
-    
-    # Считаем сообщения от 2 символов
     if len(update.message.text) >= 2:
         user = get_user(user_id)
         update_user(user_id, total_messages=user['total_messages'] + 1)
         increment_weekly_message(user_id)
         weekly = get_weekly_messages()
-        logger.info(f"📝 Сообщение: {first_name} — всего за неделю: {weekly.get(str(user_id), 0)}")
+        logger.info(f"📝 Сообщение: {first_name} — за неделю: {weekly.get(str(user_id), 0)}")
 
-# ==================== АДМИНКА ====================
+# ==================== АДМИН-ПАНЕЛЬ ====================
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
@@ -638,71 +624,128 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    if q.from_user.id != ADMIN_ID: await q.answer("❌"); return
-    await q.answer(); p = q.data.split('_'); a = p[1]
+    if q.from_user.id != ADMIN_ID:
+        await q.answer("❌ Нет доступа"); return
+    
+    await q.answer()
+    p = q.data.split('_')
+    a = p[1]
+    
     if a == 'info':
         u = get_user(p[2]); w = get_weekly_messages()
         await q.edit_message_text(f"📊 {u['first_name']}\n💰{u['rys']} ⭐{u['rep']} ✨{u['exp']}\n🎖{get_rank(u['exp'])}\n⚔️{u['duels_won']}/{u['duels_lost']}\n💬{w.get(p[2],0)}")
-    elif a in ['add','sub']:
+    
+    elif a in ['add', 'sub']:
         context.user_data['admin_action'] = {'tid': p[3], 'cur': p[2], 'op': a}
         await q.edit_message_text(f"✏️ {'+' if a=='add' else '-'}{p[2].upper()}")
+    
     elif a == 'delete':
-        conn = get_db(); u = conn.execute("SELECT first_name FROM users WHERE user_id=?", (p[2],)).fetchone()
-        if u: conn.execute("DELETE FROM users WHERE user_id=?", (p[2],)); conn.commit(); await q.edit_message_text(f"✅ {u['first_name']} удален")
-        else: await q.edit_message_text("❌ Не найден")
+        conn = get_db()
+        u = conn.execute("SELECT first_name FROM users WHERE user_id=?", (p[2],)).fetchone()
+        if u:
+            conn.execute("DELETE FROM users WHERE user_id=?", (p[2],))
+            conn.commit()
+            await q.edit_message_text(f"✅ {u['first_name']} удален")
+        else:
+            await q.edit_message_text("❌ Не найден")
         conn.close()
-    elif a == 'add': u = get_user(p[2]); await q.edit_message_text(f"✅ {u['first_name']} в БД")
+    
+    elif a == 'add':
+        u = get_user(p[2])
+        await q.edit_message_text(f"✅ {u['first_name']} в БД")
+    
     elif a == 'list':
-        conn = get_db(); ul = conn.execute("SELECT * FROM users ORDER BY exp DESC").fetchall(); conn.close()
-        if not ul: await q.edit_message_text("📋 Пусто"); return
-        page = context.user_data.get('ap', 0); tp = (len(ul)-1)//10+1
+        conn = get_db()
+        ul = conn.execute("SELECT * FROM users ORDER BY exp DESC").fetchall()
+        conn.close()
+        if not ul:
+            await q.edit_message_text("📋 Пусто"); return
+        page = context.user_data.get('ap', 0)
+        tp = (len(ul)-1)//10+1
         text = f"📋 ({page+1}/{tp})\n"
-        for u in ul[page*10:(page+1)*10]: text += f"👤 {u['first_name']} | 💰{u['rys']} | ✨{u['exp']} | 🎖{get_rank(u['exp'])}\n"
-        kb = []; nav = []
-        if page>0: nav.append(InlineKeyboardButton("⬅️", callback_data=f"admin_page_{page-1}"))
-        if page<tp-1: nav.append(InlineKeyboardButton("➡️", callback_data=f"admin_page_{page+1}"))
-        if nav: kb.append(nav)
+        for u in ul[page*10:(page+1)*10]:
+            text += f"👤 {u['first_name']} | 💰{u['rys']} | ✨{u['exp']} | 🎖{get_rank(u['exp'])}\n"
+        kb = []
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("⬅️", callback_data=f"admin_page_{page-1}"))
+        if page < tp-1:
+            nav.append(InlineKeyboardButton("➡️", callback_data=f"admin_page_{page+1}"))
+        if nav:
+            kb.append(nav)
         kb.append([InlineKeyboardButton("🔙", callback_data="admin_back")])
         await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb))
-    elif a == 'page': context.user_data['ap'] = int(p[2]); await admin_callback(update, context)
+    
+    elif a == 'page':
+        context.user_data['ap'] = int(p[2])
+        await admin_callback(update, context)
+    
     elif a == 'back':
-        kb = [[InlineKeyboardButton("📋 Реестр", callback_data="admin_list")],[InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],[InlineKeyboardButton("🏦 Банк", callback_data="admin_bank_info")]]
+        kb = [
+            [InlineKeyboardButton("📋 Реестр", callback_data="admin_list")],
+            [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
+            [InlineKeyboardButton("🏦 Банк", callback_data="admin_bank_info")],
+            [InlineKeyboardButton("🗑 Сбросить все игры", callback_data="admin_reset_games")]
+        ]
         await q.edit_message_text("🛡 АДМИН-ПАНЕЛЬ", reply_markup=InlineKeyboardMarkup(kb))
+    
     elif a == 'bank':
-        conn = get_db(); total = conn.execute("SELECT total_commission FROM bank WHERE id=1").fetchone()['total_commission']
-        recent = conn.execute("SELECT * FROM bank_history ORDER BY id DESC LIMIT 5").fetchall(); conn.close()
-        text = f"🏦 {total} RYS\n"
-        for op in recent: text += f"• {op['reason']}: +{op['amount']}\n"
-        await q.edit_message_text(text)
-    elif a == 'reset_games':
         conn = get_db()
-        conn.execute("UPDATE cases SET status = 'finished' WHERE status IN ('waiting', 'active')")
-        conn.execute("UPDATE duels SET status = 'finished' WHERE status = 'waiting'")
+        total = conn.execute("SELECT total_commission FROM bank WHERE id=1").fetchone()['total_commission']
+        recent = conn.execute("SELECT * FROM bank_history ORDER BY id DESC LIMIT 5").fetchall()
+        conn.close()
+        text = f"🏦 {total} RYS\n"
+        for op in recent:
+            text += f"• {op['reason']}: +{op['amount']}\n"
+        await q.edit_message_text(text)
+    
+    elif a == 'reset':
+        conn = get_db()
+        c = conn.execute("UPDATE cases SET status='finished' WHERE status IN ('waiting','active')").rowcount
+        d = conn.execute("UPDATE duels SET status='finished' WHERE status='waiting'").rowcount
         conn.commit()
         conn.close()
-        await q.edit_message_text("✅ Все активные игры завершены")
-    elif a == 'broadcast': context.user_data['broadcast'] = True; await q.edit_message_text("📢 Сообщение для рассылки:")
+        await q.edit_message_text(f"✅ Сброшено: {c} кейсов, {d} дуэлей")
     
+    elif a == 'broadcast':
+        context.user_data['broadcast'] = True
+        await q.edit_message_text("📢 Напиши сообщение для рассылки:")
 
 async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID: return
+    if update.effective_user.id != ADMIN_ID:
+        return
+    
     if update.message.text == '/cancel':
-        context.user_data.pop('broadcast', None); context.user_data.pop('admin_action', None)
-        await update.message.reply_text("❌ Отменено"); return
+        context.user_data.pop('broadcast', None)
+        context.user_data.pop('admin_action', None)
+        await update.message.reply_text("❌ Отменено")
+        return
+    
     if 'admin_action' in context.user_data:
         ac = context.user_data['admin_action']
-        try: amount = int(update.message.text)
-        except ValueError: await update.message.reply_text("❌ Число"); return
+        try:
+            amount = int(update.message.text)
+        except ValueError:
+            await update.message.reply_text("❌ Число"); return
         u = get_user(ac['tid']); f = ac['cur']
         update_user(ac['tid'], **{f: u[f] + (amount if ac['op']=='add' else -amount)})
         u2 = get_user(ac['tid'])
         await update.message.reply_text(f"✅ {u2['first_name']}\n{f.upper()}: {'+'if ac['op']=='add' else ''}{amount}\n💰{u2['rys']} ⭐{u2['rep']} ✨{u2['exp']}")
-        del context.user_data['admin_action']; return
+        del context.user_data['admin_action']
+        return
+    
     if context.user_data.get('broadcast'):
-        sent = 0; conn = get_db(); ul = conn.execute("SELECT user_id FROM users").fetchall(); conn.close()
+        sent = 0
+        conn = get_db()
+        ul = conn.execute("SELECT user_id FROM users").fetchall()
+        conn.close()
         for u in ul:
-            try: await context.bot.send_message(int(u['user_id']), f"📢 Рассылка\n\n{update.message.text}"); sent += 1; await asyncio.sleep(0.5)
-            except: pass
+            try:
+                await context.bot.send_message(int(u['user_id']), f"📢 Рассылка\n\n{update.message.text}")
+                sent += 1
+                await asyncio.sleep(0.5)
+            except:
+                pass
         await update.message.reply_text(f"✅ {sent}/{len(ul)}")
         del context.user_data['broadcast']
 
@@ -710,31 +753,44 @@ async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def weekly_reset():
     logger.info("=== СБРОС ===")
-    conn = get_db(); w = conn.execute("SELECT user_id, messages FROM weekly_stats WHERE messages > 0").fetchall()
-    if not w: logger.info("Нет сообщений"); conn.close(); return
+    conn = get_db()
+    w = conn.execute("SELECT user_id, messages FROM weekly_stats WHERE messages > 0").fetchall()
+    if not w:
+        logger.info("Нет сообщений"); conn.close(); return
     s = sorted(w, key=lambda x: x['messages'], reverse=True)
     er = {1:500,2:400,3:300,4:200,5:150,6:100,7:75,8:50,9:30,10:20}
     bd = {1:0.5,2:0.3,3:0.2}
-    tb = conn.execute("SELECT total_commission FROM bank WHERE id=1").fetchone()['total_commission']; dist = 0
+    tb = conn.execute("SELECT total_commission FROM bank WHERE id=1").fetchone()['total_commission']
+    dist = 0
     for i, (uid, cnt) in enumerate([(r['user_id'], r['messages']) for r in s[:10]], 1):
         conn.execute("UPDATE users SET exp = exp + ? WHERE user_id = ?", (er.get(i,0), uid))
         br = int(tb * bd[i]) if i <= 3 and tb > 0 else 0
-        if br: conn.execute("UPDATE users SET rys = rys + ? WHERE user_id = ?", (br, uid)); dist += br
-        try: await context.bot.send_message(int(uid), f"🏆 Место {i}\n💬 {cnt}\n✨ +{er.get(i,0)} EXP" + (f"\n💰 +{br} RYS" if br else ""))
-        except: pass
+        if br:
+            conn.execute("UPDATE users SET rys = rys + ? WHERE user_id = ?", (br, uid))
+            dist += br
+        try:
+            await context.bot.send_message(int(uid), f"🏆 Место {i}\n💬 {cnt}\n✨ +{er.get(i,0)} EXP" + (f"\n💰 +{br} RYS" if br else ""))
+        except:
+            pass
     conn.execute("UPDATE bank SET total_commission = 0 WHERE id = 1")
-    if dist: conn.execute("INSERT INTO bank_history (amount, reason) VALUES (?, 'weekly')", (dist,))
-    conn.execute("DELETE FROM weekly_stats"); conn.execute("INSERT OR REPLACE INTO weekly_reset (id, last_reset) VALUES (1, CURRENT_TIMESTAMP)")
-    conn.commit(); conn.close()
+    if dist:
+        conn.execute("INSERT INTO bank_history (amount, reason) VALUES (?, 'weekly')", (dist,))
+    conn.execute("DELETE FROM weekly_stats")
+    conn.execute("INSERT OR REPLACE INTO weekly_reset (id, last_reset) VALUES (1, CURRENT_TIMESTAMP)")
+    conn.commit()
+    conn.close()
     logger.info(f"Сброс: {dist} RYS")
 
 # ==================== ЗАПУСК ====================
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     err = context.error
-    if isinstance(err, (NetworkError, TimedOut)): logger.error(f"⏰ {err}")
-    elif isinstance(err, RetryAfter): await asyncio.sleep(err.retry_after)
-    else: logger.error(f"❌ {err}", exc_info=True)
+    if isinstance(err, (NetworkError, TimedOut)):
+        logger.error(f"⏰ {err}")
+    elif isinstance(err, RetryAfter):
+        await asyncio.sleep(err.retry_after)
+    else:
+        logger.error(f"❌ {err}", exc_info=True)
 
 if __name__ == "__main__":
     if not TOKEN:
@@ -744,8 +800,12 @@ if __name__ == "__main__":
     app = Application.builder().token(TOKEN).connect_timeout(30).read_timeout(30).write_timeout(30).build()
     app.add_error_handler(error_handler)
     
-    scheduler = AsyncIOScheduler(timezone=pytz.UTC)
-    scheduler.add_job(weekly_reset, 'cron', day_of_week='mon', hour=0, minute=0)
+    async def start_scheduler(app):
+        scheduler = AsyncIOScheduler(timezone=pytz.UTC)
+        scheduler.add_job(weekly_reset, 'cron', day_of_week='mon', hour=0, minute=0)
+        scheduler.start()
+    
+    app.post_init = start_scheduler
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("s_help", s_help_command))
@@ -769,13 +829,6 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.REPLY, rep_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, count_message))
     app.add_handler(MessageHandler(filters.TEXT & filters.User(ADMIN_ID), handle_admin_text))
-    
-    # Запуск шедулера внутри event loop
-        # Запуск шедулера внутри event loop
-    async def start_scheduler(app):
-        scheduler.start()
-    
-    app.post_init = start_scheduler
     
     logger.info("✅ Бот запущен")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
