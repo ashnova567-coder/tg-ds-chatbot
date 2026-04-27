@@ -626,7 +626,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await update.message.reply_text(f"🛡 {update.message.reply_to_message.from_user.first_name}", reply_markup=InlineKeyboardMarkup(kb))
         return  # ← ВАЖНО: return здесь
-    
+     kb = None  # ← добавь эту строку
     # Меню без ответа
         kb = [
         [InlineKeyboardButton("📋 Реестр", callback_data="admin_list")],
