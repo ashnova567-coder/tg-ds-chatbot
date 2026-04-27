@@ -354,7 +354,14 @@ async def rep_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== КЕЙСЫ ====================
 
 async def case_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ Ответь на сообщение игрока: /case [ставка]")
+        return
     challenger = get_user(update.effective_user.id)
+    opponent_user = update.message.reply_to_message.from_user
+    if str(update.effective_user.id) == str(opponent_user.id):
+        await update.message.reply_text("❌ Нельзя с собой")
+        return
     chat_id = str(update.effective_chat.id)
     if not context.args:
         await update.message.reply_text("❌ /case [ставка]"); return
@@ -364,14 +371,15 @@ async def case_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("❌ Положительное число"); return
     if challenger['rys'] < bet:
-        await update.message.reply_text(f"❌ Недостаточно RYS"); return
+        await update.message.reply_text("❌ Недостаточно RYS"); return
     conn = get_db()
     if conn.execute("SELECT 1 FROM cases WHERE chat_id = ? AND status IN ('waiting','active')", (chat_id,)).fetchone():
         await update.message.reply_text("❌ Активный кейс уже есть"); conn.close(); return
     case_id = f"case_{chat_id}_{datetime.now().timestamp()}"
     conn.execute(
-        "INSERT INTO cases (case_id, chat_id, bet, prize, win_index, opened, creator_id, creator_name, status) VALUES (?,?,?,?,?,?,?,?,'waiting')",
-        (case_id, chat_id, bet, bet*2, random.randint(0,9), json.dumps([False]*10), str(update.effective_user.id), challenger['first_name'])
+        "INSERT INTO cases (case_id, chat_id, bet, prize, win_index, opened, creator_id, creator_name, opponent_id, opponent_name, status) VALUES (?,?,?,?,?,?,?,?,?,?,'waiting')",
+        (case_id, chat_id, bet, bet*2, random.randint(0,9), json.dumps([False]*10),
+         str(update.effective_user.id), challenger['first_name'], str(opponent_user.id), opponent_user.first_name)
     )
     conn.commit(); conn.close()
     update_user(update.effective_user.id, rys=challenger['rys'] - bet)
@@ -381,7 +389,7 @@ async def case_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("ℹ️ Правила", callback_data=f"case_info_{case_id}")]
     ]
     msg = await update.message.reply_text(
-        f"🎲 КЕЙС-ДУЭЛЬ\n━━━━━━━━━━━━━━━━\n👤 {challenger['first_name']}\n💵 {bet} RYS\n🏆 {bet*2} RYS\n⏳ Ожидание...",
+        f"🎲 КЕЙС-ДУЭЛЬ\n👤 {challenger['first_name']} вызывает {opponent_user.first_name}\n💵 {bet} | 🏆 {bet*2}\n⏳ Ожидание...",
         reply_markup=InlineKeyboardMarkup(kb)
     )
     conn = get_db(); conn.execute("UPDATE cases SET message_id = ? WHERE case_id = ?", (msg.message_id, case_id)); conn.commit(); conn.close()
@@ -390,33 +398,38 @@ async def case_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     q = update.callback_query; case_id = q.data.split('_')[2]; user_id = str(q.from_user.id)
     conn = get_db(); case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
     if not case or case['status'] != 'waiting':
-        await q.answer("❌ Недоступно", show_alert=True); conn.close(); return
+        await q.answer("❌ Кейс не активен", show_alert=True); conn.close(); return
     case = dict(case)
     if user_id == case['creator_id']:
-        await q.answer("❌ Свой вызов", show_alert=True); conn.close(); return
+        await q.answer("❌ Жди противника или нажми Отклонить", show_alert=True); conn.close(); return
+    if user_id != case['opponent_id']:
+        await q.answer("❌ Этот вызов не тебе", show_alert=True); conn.close(); return
     opponent = get_user(user_id)
     if opponent['rys'] < case['bet']:
         await q.answer(f"❌ Нужно {case['bet']} RYS", show_alert=True); conn.close(); return
     await q.answer("⚔️ Поехали!")
     update_user(user_id, rys=opponent['rys'] - case['bet'])
     turn = random.choice(['creator', 'opponent'])
-    conn.execute("UPDATE cases SET opponent_id=?, opponent_name=?, status='active', current_turn=? WHERE case_id=?",
-                 (user_id, opponent['first_name'], turn, case_id)); conn.commit(); conn.close()
+    conn.execute("UPDATE cases SET status='active', current_turn=? WHERE case_id=?", (turn, case_id))
+    conn.commit(); conn.close()
     fp = get_user(case['creator_id'] if turn == 'creator' else user_id)
     kb = build_case_buttons(case, case_id)
     await q.edit_message_text(
-        f"🎲 КЕЙС-ДУЭЛЬ\n👤 {case['creator_name']} vs {opponent['first_name']}\n💵 {case['bet']} RYS | 🏆 {case['prize']} RYS\n👤 Ход: {fp['first_name']}",
+        f"🎲 КЕЙС-ДУЭЛЬ\n👤 {case['creator_name']} vs {opponent['first_name']}\n💵 {case['bet']} | 🏆 {case['prize']}\n👤 Ход: {fp['first_name']}",
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
 async def case_decline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; case_id = q.data.split('_')[2]; user_id = str(q.from_user.id)
     conn = get_db(); case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
-    if not case or case['status'] != 'waiting' or user_id != case['creator_id']:
-        await q.answer("❌ Нельзя", show_alert=True); conn.close(); return
+    if not case or case['status'] != 'waiting':
+        await q.answer("❌ Нельзя отменить", show_alert=True); conn.close(); return
+    case = dict(case)
+    if user_id != case['creator_id']:
+        await q.answer("❌ Только создатель может отменить", show_alert=True); conn.close(); return
     update_user(case['creator_id'], rys=get_user(case['creator_id'])['rys'] + case['bet'])
     conn.execute("UPDATE cases SET status='declined' WHERE case_id=?", (case_id,)); conn.commit(); conn.close()
-    await q.edit_message_text(f"❌ Отменена\n💰 {case['bet']} RYS возвращены")
+    await q.edit_message_text(f"❌ {case['creator_name']} отменил игру\n💰 {case['bet']} RYS возвращены")
 
 def build_case_buttons(case, case_id):
     opened = json.loads(case['opened']) if isinstance(case['opened'], str) else case['opened']
@@ -493,7 +506,14 @@ async def case_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ==================== ДУЭЛИ ====================
 
 async def duel_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    challenger = get_user(update.effective_user.id); chat_id = str(update.effective_chat.id)
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ Ответь на сообщение игрока: /duel [ставка]")
+        return
+    challenger = get_user(update.effective_user.id)
+    opponent_user = update.message.reply_to_message.from_user
+    if str(update.effective_user.id) == str(opponent_user.id):
+        await update.message.reply_text("❌ Нельзя с собой"); return
+    chat_id = str(update.effective_chat.id)
     if not context.args:
         await update.message.reply_text("❌ /duel [ставка]"); return
     try:
@@ -508,8 +528,8 @@ async def duel_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Активная дуэль есть"); conn.close(); return
     duel_id = f"duel_{chat_id}_{datetime.now().timestamp()}"
     conn.execute(
-        "INSERT INTO duels (duel_id, chat_id, challenger_id, challenger_name, bet, prize) VALUES (?,?,?,?,?,?)",
-        (duel_id, chat_id, str(update.effective_user.id), challenger['first_name'], bet, bet*2)
+        "INSERT INTO duels (duel_id, chat_id, challenger_id, challenger_name, opponent_id, opponent_name, bet, prize) VALUES (?,?,?,?,?,?,?,?)",
+        (duel_id, chat_id, str(update.effective_user.id), challenger['first_name'], str(opponent_user.id), opponent_user.first_name, bet, bet*2)
     ); conn.commit(); conn.close()
     update_user(update.effective_user.id, rys=challenger['rys'] - bet)
     kb = [
@@ -518,7 +538,7 @@ async def duel_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("ℹ️", callback_data=f"duel_info_{duel_id}")]
     ]
     msg = await update.message.reply_text(
-        f"⚔️ ДУЭЛЬ\n👤 {challenger['first_name']}\n💵 {bet} | 🏆 {bet*2}\n⏳ Ожидание...",
+        f"⚔️ ДУЭЛЬ\n👤 {challenger['first_name']} вызывает {opponent_user.first_name}\n💵 {bet} | 🏆 {bet*2}\n⏳ Ожидание...",
         reply_markup=InlineKeyboardMarkup(kb)
     )
     conn = get_db(); conn.execute("UPDATE duels SET message_id = ? WHERE duel_id = ?", (msg.message_id, duel_id)); conn.commit(); conn.close()
@@ -526,11 +546,13 @@ async def duel_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def duel_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query; duel_id = q.data.split('_')[2]; user_id = str(q.from_user.id)
     conn = get_db(); duel = conn.execute("SELECT * FROM duels WHERE duel_id = ?", (duel_id,)).fetchone()
-    if not duel or duel['status'] != 'waiting' or user_id == duel['challenger_id']:
+    if not duel or duel['status'] != 'waiting':
         await q.answer("❌ Недоступно", show_alert=True); conn.close(); return
-    duel = dict(duel); opponent = get_user(user_id)
-    if opponent['rys'] < duel['bet']:
-        await q.answer(f"❌ Нужно {duel['bet']} RYS", show_alert=True); conn.close(); return
+    duel = dict(duel)
+    if user_id == duel['challenger_id']:
+        await q.answer("❌ Жди противника или нажми Отклонить", show_alert=True); conn.close(); return
+    if user_id != duel['opponent_id']:
+        await q.answer("❌ Этот вызов не тебе", show_alert=True); conn.close(); return
     await q.answer("⚔️ Бой!")
     update_user(user_id, rys=opponent['rys'] - duel['bet'])
     challenger = get_user(duel['challenger_id'])
