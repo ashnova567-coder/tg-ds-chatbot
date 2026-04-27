@@ -588,6 +588,7 @@ async def count_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ Нет доступа"); return
+    
     if update.message.reply_to_message:
         tid = update.message.reply_to_message.from_user.id
         kb = [
@@ -602,13 +603,15 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("➕ Создать", callback_data=f"admin_add_user_{tid}")]
         ]
         await update.message.reply_text(f"🛡 {update.message.reply_to_message.from_user.first_name}", reply_markup=InlineKeyboardMarkup(kb))
-    else:
-        kb = [
-            [InlineKeyboardButton("📋 Реестр", callback_data="admin_list")],
-            [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
-            [InlineKeyboardButton("🏦 Банк", callback_data="admin_bank_info")]
-        ]
-        await update.message.reply_text("🛡 АДМИН-ПАНЕЛЬ", reply_markup=InlineKeyboardMarkup(kb))
+        return  # ← ВАЖНО: return здесь
+    
+    # Меню без ответа
+    kb = [
+        [InlineKeyboardButton("📋 Реестр", callback_data="admin_list")],
+        [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("🏦 Банк", callback_data="admin_bank_info")]
+    ]
+    await update.message.reply_text("🛡 АДМИН-ПАНЕЛЬ", reply_markup=InlineKeyboardMarkup(kb))
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -732,8 +735,8 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(duel_info_callback, pattern="^duel_info_"))
     app.add_handler(CallbackQueryHandler(admin_callback, pattern="^admin_"))
     
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, count_message))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.REPLY, rep_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, count_message))
     app.add_handler(MessageHandler(filters.TEXT & filters.User(ADMIN_ID), handle_admin_text))
     
     # Запуск шедулера внутри event loop
