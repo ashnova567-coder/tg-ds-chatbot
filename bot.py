@@ -609,7 +609,8 @@ async def count_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Нет доступа"); return
+        await update.message.reply_text("❌ Нет доступа")
+        return
     
     if update.message.reply_to_message:
         tid = update.message.reply_to_message.from_user.id
@@ -625,10 +626,9 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("➕ Создать", callback_data=f"admin_add_user_{tid}")]
         ]
         await update.message.reply_text(f"🛡 {update.message.reply_to_message.from_user.first_name}", reply_markup=InlineKeyboardMarkup(kb))
-        return  # ← ВАЖНО: return здесь
-     kb = None  # ← добавь эту строку
-    # Меню без ответа
-        kb = [
+        return
+    
+    kb = [
         [InlineKeyboardButton("📋 Реестр", callback_data="admin_list")],
         [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
         [InlineKeyboardButton("🏦 Банк", callback_data="admin_bank_info")],
