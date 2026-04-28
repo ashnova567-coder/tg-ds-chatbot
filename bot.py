@@ -703,18 +703,30 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_answer(q, "")
     p = q.data.split('_')
     a = p[1]
+    
     if a == 'info':
         u = get_user(p[2]); w = get_weekly_messages()
         await safe_edit(q, f"📊 {u['first_name']}\n💰{u['rys']} ⭐{u['rep']} ✨{u['exp']}\n🎖{get_rank(u['exp'])}\n💬{w.get(p[2],0)}")
-    elif a in ['add','sub']:
-        context.user_data['admin_action'] = {'tid': p[3], 'cur': p[2], 'op': a}
-        await safe_edit(q, f"✏️ {'+' if a=='add' else '-'}{p[2].upper()}")
+    
+    elif a in ['add', 'sub']:
+        _, operation, currency, target_id = p
+        context.user_data['admin_action'] = {
+            'target_id': target_id,
+            'currency': currency,
+            'operation': operation
+        }
+        sign = '+' if operation == 'add' else '-'
+        await safe_edit(q, f"✏️ Введи число для изменения {currency.upper()}\n\nПример: {sign}50\n\n/cancel — отмена")
+    
     elif a == 'delete':
         conn = get_db(); u = conn.execute("SELECT first_name FROM users WHERE user_id=?", (p[2],)).fetchone()
         if u: conn.execute("DELETE FROM users WHERE user_id=?", (p[2],)); conn.commit(); await safe_edit(q, f"✅ {u['first_name']} удален")
         else: await safe_edit(q, "❌ Не найден")
         conn.close()
-    elif a == 'add': u = get_user(p[2]); await safe_edit(q, f"✅ {u['first_name']} в БД")
+    
+    elif a == 'add_user':
+        u = get_user(p[2]); await safe_edit(q, f"✅ {u['first_name']} в БД")
+    
     elif a == 'list':
         conn = get_db(); ul = conn.execute("SELECT * FROM users ORDER BY exp DESC").fetchall(); conn.close()
         if not ul: await safe_edit(q, "📋 Пусто"); return
@@ -727,7 +739,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if nav: kb.append(nav)
         kb.append([InlineKeyboardButton("🔙", callback_data="admin_back")])
         await safe_edit(q, text, reply_markup=InlineKeyboardMarkup(kb))
+    
     elif a == 'page': context.user_data['ap'] = int(p[2]); await admin_callback(update, context)
+    
     elif a == 'back':
         kb = [
             [InlineKeyboardButton("📋 Реестр", callback_data="admin_list")],
@@ -736,38 +750,73 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🗑 Сбросить игры", callback_data="admin_reset_games")]
         ]
         await safe_edit(q, "🛡 АДМИН-ПАНЕЛЬ", reply_markup=InlineKeyboardMarkup(kb))
+    
     elif a == 'bank':
         conn = get_db(); total = conn.execute("SELECT total_commission FROM bank WHERE id=1").fetchone()['total_commission']
         recent = conn.execute("SELECT * FROM bank_history ORDER BY id DESC LIMIT 5").fetchall(); conn.close()
         text = f"🏦 {total} RYS\n"
         for op in recent: text += f"• {op['reason']}: +{op['amount']}\n"
         await safe_edit(q, text)
+    
     elif a == 'reset':
         conn = get_db()
         c = conn.execute("UPDATE cases SET status='finished' WHERE status IN ('waiting','active')").rowcount
         conn.commit(); conn.close()
         await safe_edit(q, f"✅ Сброшено кейсов: {c}")
+    
     elif a == 'broadcast': context.user_data['broadcast'] = True; await safe_edit(q, "📢 Напиши сообщение:")
 
 async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
+    
     if update.message.text == '/cancel':
-        context.user_data.pop('broadcast', None); context.user_data.pop('admin_action', None)
-        await safe_reply(update, "❌ Отменено"); return
+        context.user_data.pop('broadcast', None)
+        context.user_data.pop('admin_action', None)
+        await safe_reply(update, "❌ Отменено")
+        return
+    
     if 'admin_action' in context.user_data:
         ac = context.user_data['admin_action']
-        try: amount = int(update.message.text)
-        except ValueError: await safe_reply(update, "❌ Число"); return
-        u = get_user(ac['tid']); f = ac['cur']
-        update_user(ac['tid'], **{f: u[f] + (amount if ac['op']=='add' else -amount)})
-        u2 = get_user(ac['tid'])
-        await safe_reply(update, f"✅ {u2['first_name']}\n{f.upper()}: {'+'if ac['op']=='add' else ''}{amount}\n💰{u2['rys']} ⭐{u2['rep']} ✨{u2['exp']}")
-        del context.user_data['admin_action']; return
+        try:
+            amount = int(update.message.text)
+        except ValueError:
+            await safe_reply(update, "❌ Введи целое число (например: 50 или -50)")
+            return
+        
+        user = get_user(ac['target_id'])
+        field = ac['currency']
+        
+        if ac['operation'] == 'add':
+            new_val = user[field] + amount
+        else:
+            new_val = user[field] - amount
+        
+        update_user(ac['target_id'], **{field: new_val})
+        updated_user = get_user(ac['target_id'])
+        
+        await safe_reply(update,
+            f"✅ {updated_user['first_name']} обновлён\n\n"
+            f"{field.upper()}: {'+' if ac['operation'] == 'add' else ''}{amount}\n"
+            f"💰 RYS: {updated_user['rys']}\n"
+            f"⭐ REP: {updated_user['rep']}\n"
+            f"✨ EXP: {updated_user['exp']}\n"
+            f"🎖 Ранг: {get_rank(updated_user['exp'])}"
+        )
+        del context.user_data['admin_action']
+        return
+    
     if context.user_data.get('broadcast'):
-        sent = 0; conn = get_db(); ul = conn.execute("SELECT user_id FROM users").fetchall(); conn.close()
+        sent = 0
+        conn = get_db()
+        ul = conn.execute("SELECT user_id FROM users").fetchall()
+        conn.close()
         for u in ul:
-            try: await context.bot.send_message(int(u['user_id']), f"📢 Рассылка\n\n{update.message.text}"); sent += 1; await asyncio.sleep(0.5)
-            except: pass
+            try:
+                await context.bot.send_message(int(u['user_id']), f"📢 Рассылка\n\n{update.message.text}")
+                sent += 1
+                await asyncio.sleep(0.5)
+            except:
+                pass
         await safe_reply(update, f"✅ {sent}/{len(ul)}")
         del context.user_data['broadcast']
 
@@ -809,6 +858,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update:
             try: await context.application.process_update(update)
             except: pass
+    else:
+        logger.error(f"❌ {err}", exc_info=True)
 
 # ==================== ЗАПУСК ====================
 
