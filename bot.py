@@ -7,7 +7,6 @@ import logging
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-from telegram.constants import ParseMode
 from telegram.error import TelegramError, NetworkError, TimedOut, RetryAfter
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import pytz
@@ -57,8 +56,6 @@ def init_db():
             rep INTEGER DEFAULT 0,
             exp INTEGER DEFAULT 0,
             total_messages INTEGER DEFAULT 0,
-            duels_won INTEGER DEFAULT 0,
-            duels_lost INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS bank (
@@ -88,21 +85,6 @@ def init_db():
             message_id INTEGER,
             winner_id TEXT,
             winner_name TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            finished_at TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS duels (
-            duel_id TEXT PRIMARY KEY,
-            chat_id TEXT,
-            challenger_id TEXT,
-            challenger_name TEXT,
-            bet INTEGER,
-            prize INTEGER,
-            opponent_id TEXT,
-            opponent_name TEXT,
-            status TEXT DEFAULT 'waiting',
-            message_id INTEGER,
-            winner_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             finished_at TIMESTAMP
         );
@@ -221,9 +203,9 @@ async def safe_reply(update: Update, text, reply_markup=None, retries=3):
             else:
                 return await update.message.reply_text(text)
         except (NetworkError, TimedOut) as e:
-            logger.warning(f"🔄 Повтор {attempt+1}/{retries}: {e}")
+            logger.warning(f"Повтор {attempt+1}/{retries}: {e}")
             await asyncio.sleep(2)
-    logger.error("❌ Не удалось отправить")
+    logger.error("Не удалось отправить")
     return None
 
 async def safe_edit(query, text, reply_markup=None, retries=3):
@@ -234,9 +216,8 @@ async def safe_edit(query, text, reply_markup=None, retries=3):
             else:
                 return await query.edit_message_text(text)
         except (NetworkError, TimedOut) as e:
-            logger.warning(f"🔄 Повтор {attempt+1}/{retries}: {e}")
+            logger.warning(f"Повтор {attempt+1}/{retries}: {e}")
             await asyncio.sleep(2)
-    logger.error("❌ Не удалось отредактировать")
     return None
 
 async def safe_answer(query, text, show_alert=False, retries=3):
@@ -244,7 +225,7 @@ async def safe_answer(query, text, show_alert=False, retries=3):
         try:
             return await query.answer(text, show_alert=show_alert)
         except (NetworkError, TimedOut) as e:
-            logger.warning(f"🔄 Повтор {attempt+1}/{retries}: {e}")
+            logger.warning(f"Повтор {attempt+1}/{retries}: {e}")
             await asyncio.sleep(1)
     return None
 
@@ -254,28 +235,43 @@ async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ensure_user(update.effective_user.id, update.effective_user.username, update.effective_user.first_name)
     user = get_user(update.effective_user.id)
     await safe_reply(update,
-        f"👋 Привет, {update.effective_user.first_name}!\n\n"
-        f"📊 Счет: {user['account']}\n💰 Баланс: {user['rys']} RYS\n"
-        f"⭐ Репутация: {user['rep']}\n✨ EXP: {user['exp']}\n"
-        f"🎖 Ранг: {get_rank(user['exp'])}\n🏦 Банк: {get_bank_total()} RYS\n\n"
-        f"/s_help — список команд"
+        f"👋 {update.effective_user.first_name}, твой профиль:\n\n"
+        f"📊 Счёт: {user['account']}\n"
+        f"💰 Баланс: {user['rys']} RYS — основная валюта чата\n"
+        f"⭐ Репутация: {user['rep']} очков\n"
+        f"✨ EXP: {user['exp']} — опыт для повышения ранга\n"
+        f"🎖 Ранг: {get_rank(user['exp'])}\n"
+        f"🏦 Банк: {get_bank_total()} RYS — общий котёл комиссий\n\n"
+        f"/s_help — все команды\n/stats — подробная статистика"
     )
 
 async def s_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await safe_reply(update,
-        "📋 КОМАНДЫ БОТА\n━━━━━━━━━━━━━━━━\n\n"
-        "💰 Финансы:\n• /send GESH-XXXX [сумма] — перевод (1% в банк)\n• /balance — баланс\n\n"
-        "🎲 Кейс-дуэль (ответом на сообщение):\n• /case [ставка]\n\n"
-        "⚔️ Дуэль (ответом на сообщение):\n• /duel [ставка]\n\n"
-        "⭐ Репутация (ответом на сообщение):\n• +rep / -rep\n\n"
-        "📊 Статистика:\n• /stats / /top\n\n"
-        "🏆 Недельный топ: понедельник 00:00 UTC\n"
-        "🎖 Ранги: Пиздюк → Пиздун → Кайфун → Магистр → Легенда"
+        "📋 КОМАНДЫ БОТА\n\n"
+        "💰 Экономика:\n"
+        "/send GESH-XXXX [сумма] — перевод RYS (1% в банк)\n"
+        "/balance — баланс и счёт\n\n"
+        "🎲 Кейс-дуэль (ответом на сообщение):\n"
+        "/case [ставка] — 10 кейсов, 1 приз x2\n\n"
+        "⭐ Репутация (ответом на сообщение):\n"
+        "+rep / -rep — повысить/понизить\n\n"
+        "📊 Статистика:\n"
+        "/stats — подробная информация\n"
+        "/top — недельный топ\n\n"
+        "🏆 Каждый понедельник:\n"
+        "Топ-10 → EXP\n"
+        "Топ-3 → доля банка (50/30/20%)\n\n"
+        "🎖 Ранги: Пиздюк → Пиздун → Кайфун → Магистр → Легенда\n\n"
+        "/hello — профиль"
     )
 
 async def balance_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
-    await safe_reply(update, f"💰 {user['rys']} RYS\n📊 {user['account']}\n🏦 Банк: {get_bank_total()} RYS")
+    await safe_reply(update,
+        f"💰 Баланс: {user['rys']} RYS\n"
+        f"📊 Счёт: {user['account']}\n"
+        f"🏦 Банк: {get_bank_total()} RYS"
+    )
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
@@ -283,22 +279,35 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     next_rank = ""
     for t, r in RANKS[1:]:
         if user['exp'] < t:
-            next_rank = f"\n📈 До следующего: {t - user['exp']} XP"
+            next_rank = f" (нужно ещё {t - user['exp']} XP)"
             break
+    
     await safe_reply(update,
-        f"📊 СТАТИСТИКА\n━━━━━━━━━━━━━━━━\n👤 {user['first_name']}\n📊 {user['account']}\n"
-        f"💰 {user['rys']} RYS | ⭐ {user['rep']} rep\n✨ {user['exp']} XP | 🎖 {get_rank(user['exp'])}{next_rank}\n"
-        f"⚔️ Побед: {user['duels_won']} | 💀 Поражений: {user['duels_lost']}\n"
-        f"💬 За неделю: {weekly.get(str(update.effective_user.id), 0)}\n📝 Всего: {user['total_messages']}"
+        f"📊 СТАТИСТИКА ИГРОКА\n\n"
+        f"👤 Имя: {user['first_name']}\n"
+        f"🆔 ID: {user['user_id']}\n"
+        f"📊 Счёт: {user['account']} — номер для переводов\n\n"
+        f"💰 RYS: {user['rys']} — основная валюта\n"
+        f"   • Тратится: переводы, кейсы, репутация\n"
+        f"   • Заработок: переводы, выигрыши, топ-3 недели\n\n"
+        f"⭐ Репутация: {user['rep']} очков\n"
+        f"   • +rep стоит 1 RYS, -rep стоит 10 RYS\n"
+        f"   • Деньги уходят в общий банк\n\n"
+        f"✨ EXP: {user['exp']} — опыт\n"
+        f"   • Начисляется только за недельный топ\n"
+        f"   • Нужен для повышения ранга\n\n"
+        f"🎖 Ранг: {get_rank(user['exp'])}{next_rank}\n\n"
+        f"💬 За неделю: {weekly.get(str(update.effective_user.id), 0)} сообщений\n"
+        f"📝 Всего: {user['total_messages']} сообщений"
     )
 
 async def top_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
     weekly = get_weekly_messages()
     if not weekly:
-        await safe_reply(update, "📊 Нет данных за неделю"); return
+        await safe_reply(update, "Нет данных за неделю"); return
     sorted_users = sorted(weekly.items(), key=lambda x: x[1], reverse=True)[:10]
     medals = ["🥇", "🥈", "🥉"] + [f"{i}." for i in range(4, 11)]
-    text = "📊 НЕДЕЛЬНЫЙ ТОП\n━━━━━━━━━━━━━━━━\n"
+    text = "📊 НЕДЕЛЬНЫЙ ТОП\n\n"
     for i, (uid, count) in enumerate(sorted_users):
         user = get_user(uid)
         text += f"{medals[i]} {user['first_name']}: {count} сообщ.\n"
@@ -316,12 +325,12 @@ async def send_rys(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = int(context.args[1])
         if amount <= 0: raise ValueError
     except ValueError:
-        await safe_reply(update, "❌ Сумма — положительное число"); return
+        await safe_reply(update, "❌ Положительное число"); return
     if sender['rys'] < amount:
         await safe_reply(update, "❌ Недостаточно RYS"); return
     target = find_user_by_account(account)
     if not target:
-        await safe_reply(update, "❌ Получатель не найден"); return
+        await safe_reply(update, "❌ Счёт не найден"); return
     if target['user_id'] == str(update.effective_user.id):
         await safe_reply(update, "❌ Нельзя себе"); return
     commission = max(int(amount * SEND_COMMISSION), 1)
@@ -330,41 +339,39 @@ async def send_rys(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user(target['user_id'], rys=target['rys'] + received)
     add_to_bank(commission, f"Перевод {sender['account']} -> {account}")
     await safe_reply(update,
-        f"✅ Перевод\n📤 {amount} | 💸 {commission} | 📥 {received}\n👤 {target['first_name']}\n💰 Баланс: {sender['rys'] - amount}"
+        f"✅ Перевод выполнен\n"
+        f"📤 {amount} RYS\n"
+        f"💸 Комиссия: {commission} RYS → банк\n"
+        f"📥 Получатель: {target['first_name']} получил {received} RYS"
     )
 
 # ==================== РЕПУТАЦИЯ ====================
 
 async def rep_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.reply_to_message:
-        return
+    if not update.message or not update.message.reply_to_message: return
     text = update.message.text.strip()
-    if not (text.startswith('+rep') or text.startswith('-rep')):
-        return
+    if not (text.startswith('+rep') or text.startswith('-rep')): return
     sender = get_user(update.effective_user.id)
     target = get_user(update.message.reply_to_message.from_user.id)
     if sender['user_id'] == target['user_id']:
         await safe_reply(update, "❌ Нельзя себе"); return
     parts = text.split()
     value = int(parts[1]) if len(parts) > 1 and parts[1].lstrip('-').isdigit() else 1
-    if value <= 0:
-        await safe_reply(update, "❌ Положительное число"); return
+    if value <= 0: await safe_reply(update, "❌ Положительное число"); return
     if text.startswith('+rep'):
         cost = value
-        if sender['rys'] < cost:
-            await safe_reply(update, f"❌ Нужно {cost} RYS"); return
+        if sender['rys'] < cost: await safe_reply(update, f"❌ Нужно {cost} RYS"); return
         update_user(sender['user_id'], rys=sender['rys'] - cost)
         update_user(target['user_id'], rep=target['rep'] + value)
         add_to_bank(cost, f"+rep {sender['first_name']} -> {target['first_name']}")
-        await safe_reply(update, f"✅ +{value} rep -> {target['first_name']} 💸{cost} RYS")
+        await safe_reply(update, f"✅ +{value} репутации → {target['first_name']} (списано {cost} RYS в банк)")
     else:
         cost = value * REP_MINUS_COST
-        if sender['rys'] < cost:
-            await safe_reply(update, f"❌ Нужно {cost} RYS"); return
+        if sender['rys'] < cost: await safe_reply(update, f"❌ Нужно {cost} RYS"); return
         update_user(sender['user_id'], rys=sender['rys'] - cost)
         update_user(target['user_id'], rep=target['rep'] - value)
         add_to_bank(cost, f"-rep {sender['first_name']} -> {target['first_name']}")
-        await safe_reply(update, f"👎 -{value} rep -> {target['first_name']} 💸{cost} RYS")
+        await safe_reply(update, f"👎 -{value} репутации → {target['first_name']} (списано {cost} RYS в банк)")
 
 # ==================== КЕЙС-ДУЭЛЬ ====================
 
@@ -385,65 +392,128 @@ async def case_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply(update, "❌ Положительное число"); return
     if challenger['rys'] < bet:
         await safe_reply(update, "❌ Недостаточно RYS"); return
+    
     case_id = f"case_{chat_id}_{datetime.now().timestamp()}"
+    win_index = random.randint(0, 9)
+    
     conn = get_db()
     conn.execute(
         "INSERT INTO cases (case_id, chat_id, bet, prize, win_index, opened, creator_id, creator_name, opponent_id, opponent_name, status) VALUES (?,?,?,?,?,?,?,?,?,?,'waiting')",
-        (case_id, chat_id, bet, bet*2, random.randint(0,9), json.dumps([False]*10),
-         str(update.effective_user.id), challenger['first_name'], str(opponent_user.id), opponent_user.first_name)
+        (case_id, chat_id, bet, bet*2, win_index, json.dumps([False]*10),
+         str(update.effective_user.id), challenger['first_name'],
+         str(opponent_user.id), opponent_user.first_name)
     )
-    conn.commit(); conn.close()
+    conn.commit()
+    conn.close()
+    
     update_user(update.effective_user.id, rys=challenger['rys'] - bet)
+    
     kb = [
         [InlineKeyboardButton("✅ Принять", callback_data=f"case_accept_{case_id}"),
          InlineKeyboardButton("❌ Отклонить", callback_data=f"case_decline_{case_id}")],
         [InlineKeyboardButton("ℹ️ Правила", callback_data=f"case_info_{case_id}")]
     ]
+    
     msg = await safe_reply(update,
-        f"🎲 КЕЙС-ДУЭЛЬ\n👤 {challenger['first_name']} вызывает {opponent_user.first_name}\n💵 {bet} | 🏆 {bet*2}\n⏳ Ожидание...",
+        f"🎲 КЕЙС-ДУЭЛЬ\n\n"
+        f"👤 {challenger['first_name']} вызывает {opponent_user.first_name}\n"
+        f"💵 Ставка: {bet} RYS\n"
+        f"🏆 Приз: {bet*2} RYS\n\n"
+        f"⏳ Ожидание {opponent_user.first_name}...",
         reply_markup=InlineKeyboardMarkup(kb)
     )
+    
     if msg:
         conn = get_db()
         conn.execute("UPDATE cases SET message_id = ? WHERE case_id = ?", (msg.message_id, case_id))
-        conn.commit(); conn.close()
+        conn.commit()
+        conn.close()
 
 async def case_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; case_id = q.data.split('_')[2]; user_id = str(q.from_user.id)
-    conn = get_db(); case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
-    if not case or case['status'] != 'waiting':
-        await safe_answer(q, "❌ Кейс не активен", show_alert=True); conn.close(); return
-    case = dict(case)
+    q = update.callback_query
+    case_id = q.data.split('_')[2]
+    user_id = str(q.from_user.id)
+    
+    conn = get_db()
+    case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+    
+    if not case:
+        await safe_answer(q, "❌ Кейс не найден", show_alert=True)
+        conn.close()
+        return
+    
+    if case['status'] != 'waiting':
+        await safe_answer(q, "❌ Кейс уже не активен", show_alert=True)
+        conn.close()
+        return
+    
     if user_id == case['creator_id']:
-        await safe_answer(q, "❌ Жди противника или нажми Отклонить", show_alert=True); conn.close(); return
+        await safe_answer(q, "❌ Ты создатель — жди противника", show_alert=True)
+        conn.close()
+        return
+    
     if user_id != case['opponent_id']:
-        await safe_answer(q, "❌ Этот вызов не тебе", show_alert=True); conn.close(); return
+        await safe_answer(q, "❌ Этот вызов не тебе", show_alert=True)
+        conn.close()
+        return
+    
     opponent = get_user(user_id)
     if opponent['rys'] < case['bet']:
-        await safe_answer(q, f"❌ Нужно {case['bet']} RYS", show_alert=True); conn.close(); return
+        await safe_answer(q, f"❌ Нужно {case['bet']} RYS", show_alert=True)
+        conn.close()
+        return
+    
     await safe_answer(q, "⚔️ Поехали!")
+    
     update_user(user_id, rys=opponent['rys'] - case['bet'])
     turn = random.choice(['creator', 'opponent'])
+    
     conn.execute("UPDATE cases SET status='active', current_turn=? WHERE case_id=?", (turn, case_id))
-    conn.commit(); conn.close()
-    fp = get_user(case['creator_id'] if turn == 'creator' else user_id)
+    conn.commit()
+    conn.close()
+    
+    first_player = get_user(case['creator_id'] if turn == 'creator' else user_id)
     kb = build_case_buttons(case, case_id)
+    
     await safe_edit(q,
-        f"🎲 КЕЙС-ДУЭЛЬ\n👤 {case['creator_name']} vs {opponent['first_name']}\n💵 {case['bet']} | 🏆 {case['prize']}\n👤 Ход: {fp['first_name']}",
+        f"🎲 КЕЙС-ДУЭЛЬ\n\n"
+        f"👤 {case['creator_name']} VS {opponent['first_name']}\n"
+        f"💵 Ставка: {case['bet']} RYS\n"
+        f"🏆 Приз: {case['prize']} RYS\n\n"
+        f"👤 Ход: {first_player['first_name']}",
         reply_markup=InlineKeyboardMarkup(kb)
     )
 
 async def case_decline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; case_id = q.data.split('_')[2]; user_id = str(q.from_user.id)
-    conn = get_db(); case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+    q = update.callback_query
+    case_id = q.data.split('_')[2]
+    user_id = str(q.from_user.id)
+    
+    conn = get_db()
+    case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+    
     if not case or case['status'] != 'waiting':
-        await safe_answer(q, "❌ Нельзя отменить", show_alert=True); conn.close(); return
-    case = dict(case)
+        await safe_answer(q, "❌ Нельзя отменить", show_alert=True)
+        conn.close()
+        return
+    
     if user_id != case['creator_id']:
-        await safe_answer(q, "❌ Только создатель", show_alert=True); conn.close(); return
-    update_user(case['creator_id'], rys=get_user(case['creator_id'])['rys'] + case['bet'])
-    conn.execute("UPDATE cases SET status='declined' WHERE case_id=?", (case_id,)); conn.commit(); conn.close()
-    await safe_edit(q, f"❌ {case['creator_name']} отменил игру\n💰 {case['bet']} RYS возвращены")
+        await safe_answer(q, "❌ Только создатель может отменить", show_alert=True)
+        conn.close()
+        return
+    
+    creator = get_user(case['creator_id'])
+    update_user(case['creator_id'], rys=creator['rys'] + case['bet'])
+    
+    conn.execute("UPDATE cases SET status='declined' WHERE case_id=?", (case_id,))
+    conn.commit()
+    conn.close()
+    
+    await safe_edit(q,
+        f"❌ Кейс отменён\n"
+        f"👤 {case['creator_name']} вернул ставку\n"
+        f"💰 {case['bet']} RYS возвращены"
+    )
 
 def build_case_buttons(case, case_id):
     opened = json.loads(case['opened']) if isinstance(case['opened'], str) else case['opened']
@@ -455,52 +525,110 @@ def build_case_buttons(case, case_id):
             if opened[j]:
                 row.append(InlineKeyboardButton(f"❌ {j+1}", callback_data="noop"))
             else:
-                row.append(InlineKeyboardButton(f"{'🎯' if rem==1 else '🎁'} {j+1}", callback_data=f"case_open_{case_id}_{j}"))
+                emoji = "🎯" if rem == 1 else "🎁"
+                row.append(InlineKeyboardButton(f"{emoji} {j+1}", callback_data=f"case_open_{case_id}_{j}"))
         kb.append(row)
     kb.append([InlineKeyboardButton("ℹ️", callback_data=f"case_info_{case_id}")])
     return kb
 
 async def handle_case_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; p = q.data.split('_'); case_id = p[2]; box = int(p[3]); user_id = str(q.from_user.id)
-    conn = get_db(); case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+    q = update.callback_query
+    parts = q.data.split('_')
+    case_id = parts[2]
+    box = int(parts[3])
+    user_id = str(q.from_user.id)
+    
+    conn = get_db()
+    case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+    
     if not case or case['status'] != 'active':
-        await safe_answer(q, "❌ Завершена", show_alert=True); conn.close(); return
-    case = dict(case)
+        await safe_answer(q, "❌ Кейс завершён", show_alert=True)
+        conn.close()
+        return
+    
     if user_id not in [case['creator_id'], case['opponent_id']]:
-        await safe_answer(q, "❌ Не участвуешь", show_alert=True); conn.close(); return
-    cur = case['creator_id'] if case['current_turn'] == 'creator' else case['opponent_id']
-    if user_id != cur:
-        await safe_answer(q, f"⏳ Ход {get_user(cur)['first_name']}", show_alert=True); conn.close(); return
+        await safe_answer(q, "❌ Ты не в игре", show_alert=True)
+        conn.close()
+        return
+    
+    current_player = case['creator_id'] if case['current_turn'] == 'creator' else case['opponent_id']
+    if user_id != current_player:
+        player_name = get_user(current_player)['first_name']
+        await safe_answer(q, f"⏳ Сейчас ход {player_name}", show_alert=True)
+        conn.close()
+        return
+    
     opened = json.loads(case['opened']) if isinstance(case['opened'], str) else case['opened']
     if opened[box]:
-        await safe_answer(q, "❌ Открыт", show_alert=True); conn.close(); return
-    rem_before = 10 - sum(opened); opened[box] = True; user = get_user(user_id)
-    is_last = (rem_before == 1); is_win = (box == case['win_index'])
+        await safe_answer(q, "❌ Уже открыт", show_alert=True)
+        conn.close()
+        return
+    
+    remaining_before = 10 - sum(opened)
+    opened[box] = True
+    user = get_user(user_id)
+    
+    is_last = (remaining_before == 1)
+    is_win = (box == case['win_index'])
+    
     if is_last or is_win:
         update_user(user_id, rys=user['rys'] + case['prize'])
+        
         conn.execute(
             "UPDATE cases SET opened=?, status='finished', winner_id=?, winner_name=?, finished_at=CURRENT_TIMESTAMP WHERE case_id=?",
             (json.dumps(opened), user_id, q.from_user.first_name, case_id)
-        ); conn.commit(); conn.close()
+        )
+        conn.commit()
+        conn.close()
+        
         await safe_answer(q, f"🎉 +{case['prize']} RYS!", show_alert=True)
+        
         kb = build_final_buttons(case, opened, box)
-        desc = "последний кейс (100%)" if is_last and not is_win else ("победный (последний)" if is_win and is_last else f"кейс №{box+1}")
+        
+        if is_last and not is_win:
+            desc = "последний кейс (100% победа)"
+        elif is_win and is_last:
+            desc = "победный кейс (последний)"
+        else:
+            desc = f"победный кейс №{box+1}"
+        
         await safe_edit(q,
-            f"🎲 ЗАВЕРШЕНА\n👤 {case['creator_name']} vs {case['opponent_name']}\n💵 {case['bet']} RYS\n"
-            f"🏆 {q.from_user.first_name}\n🎯 {desc}\n💰 {case['prize']} RYS",
+            f"🎲 КЕЙС-ДУЭЛЬ ЗАВЕРШЕНА\n\n"
+            f"👤 {case['creator_name']} VS {case['opponent_name']}\n"
+            f"💵 Ставка: {case['bet']} RYS\n\n"
+            f"🏆 Победитель: {q.from_user.first_name}\n"
+            f"🎯 {desc}\n"
+            f"💰 Выигрыш: {case['prize']} RYS",
             reply_markup=InlineKeyboardMarkup(kb)
         )
     else:
         new_turn = 'opponent' if case['current_turn'] == 'creator' else 'creator'
-        conn.execute("UPDATE cases SET opened=?, current_turn=? WHERE case_id=?", (json.dumps(opened), new_turn, case_id))
-        conn.commit(); conn.close()
-        cur_player = get_user(case['creator_id'] if new_turn == 'creator' else case['opponent_id'])
-        await safe_answer(q, f"📦 Ход {cur_player['first_name']}", show_alert=True)
-        kb = build_case_buttons({**case, 'opened': opened}, case_id)
-        rem = 10 - sum(opened)
+        
+        conn.execute(
+            "UPDATE cases SET opened=?, current_turn=? WHERE case_id=?",
+            (json.dumps(opened), new_turn, case_id)
+        )
+        conn.commit()
+        conn.close()
+        
+        next_player = get_user(case['creator_id'] if new_turn == 'creator' else case['opponent_id'])
+        await safe_answer(q, f"📦 Пусто! Ход {next_player['first_name']}", show_alert=True)
+        
+        updated_case = dict(case)
+        updated_case['opened'] = opened
+        updated_case['current_turn'] = new_turn
+        
+        kb = build_case_buttons(updated_case, case_id)
+        remaining = 10 - sum(opened)
+        hint = "\n⚠️ Последний кейс — 100% победа!" if remaining == 1 else ""
+        
         await safe_edit(q,
-            f"🎲 КЕЙС-ДУЭЛЬ\n👤 {case['creator_name']} vs {case['opponent_name']}\n💵 {case['bet']} | 🏆 {case['prize']}\n"
-            f"🎮 {sum(opened)}/10 (ост. {rem})\n👤 Ход: {cur_player['first_name']}{' ⚠️ 100% победа!' if rem==1 else ''}",
+            f"🎲 КЕЙС-ДУЭЛЬ\n\n"
+            f"👤 {case['creator_name']} VS {case['opponent_name']}\n"
+            f"💵 Ставка: {case['bet']} RYS\n"
+            f"🏆 Приз: {case['prize']} RYS\n"
+            f"🎮 Открыто: {sum(opened)}/10 (осталось {remaining})\n\n"
+            f"👤 Ход: {next_player['first_name']}{hint}",
             reply_markup=InlineKeyboardMarkup(kb)
         )
 
@@ -509,112 +637,37 @@ def build_final_buttons(case, opened, win_box):
     for i in range(0, 10, 5):
         row = []
         for j in range(i, i+5):
-            if j == case['win_index']: e = "🎉" if j == win_box else "💎"
-            elif opened[j]: e = "❌"
-            else: e = "🎁"
-            row.append(InlineKeyboardButton(f"{e} {j+1}", callback_data="noop"))
+            if j == case['win_index']:
+                emoji = "🎉" if j == win_box else "💎"
+            elif opened[j]:
+                emoji = "❌"
+            else:
+                emoji = "🎁"
+            row.append(InlineKeyboardButton(f"{emoji} {j+1}", callback_data="noop"))
         kb.append(row)
     return kb
 
 async def case_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_answer(update.callback_query, "🎲 2 игрока, 10 кейсов, 1 приз x2\nПоследний кейс = 100% победа!", show_alert=True)
-
-# ==================== ДУЭЛЬ ====================
-
-async def duel_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        await safe_reply(update, "❌ Ответь на сообщение игрока: /duel [ставка]"); return
-    challenger = get_user(update.effective_user.id)
-    opponent_user = update.message.reply_to_message.from_user
-    if str(update.effective_user.id) == str(opponent_user.id):
-        await safe_reply(update, "❌ Нельзя с собой"); return
-    chat_id = str(update.effective_chat.id)
-    if not context.args:
-        await safe_reply(update, "❌ /duel [ставка]"); return
-    try:
-        bet = int(context.args[0])
-        if bet <= 0: raise ValueError
-    except ValueError:
-        await safe_reply(update, "❌ Положительное число"); return
-    if challenger['rys'] < bet:
-        await safe_reply(update, "❌ Недостаточно RYS"); return
-    duel_id = f"duel_{chat_id}_{datetime.now().timestamp()}"
-    conn = get_db()
-    conn.execute(
-        "INSERT INTO duels (duel_id, chat_id, challenger_id, challenger_name, opponent_id, opponent_name, bet, prize) VALUES (?,?,?,?,?,?,?,?)",
-        (duel_id, chat_id, str(update.effective_user.id), challenger['first_name'], str(opponent_user.id), opponent_user.first_name, bet, bet*2)
-    ); conn.commit(); conn.close()
-    update_user(update.effective_user.id, rys=challenger['rys'] - bet)
-    kb = [
-        [InlineKeyboardButton("⚔️ Принять", callback_data=f"duel_accept_{duel_id}"),
-         InlineKeyboardButton("❌ Отклонить", callback_data=f"duel_decline_{duel_id}")],
-        [InlineKeyboardButton("ℹ️", callback_data=f"duel_info_{duel_id}")]
-    ]
-    msg = await safe_reply(update,
-        f"⚔️ ДУЭЛЬ\n👤 {challenger['first_name']} вызывает {opponent_user.first_name}\n💵 {bet} | 🏆 {bet*2}\n⏳ Ожидание...",
-        reply_markup=InlineKeyboardMarkup(kb)
+    await safe_answer(update.callback_query,
+        "🎲 ПРАВИЛА КЕЙС-ДУЭЛИ:\n\n"
+        "• Два игрока ставят одинаковую сумму\n"
+        "• Призовой фонд = ставка × 2\n"
+        "• 1 из 10 кейсов содержит приз\n"
+        "• Ход переходит по очереди\n"
+        "• Последний кейс = 100% победа!\n"
+        "• Победитель забирает всё",
+        show_alert=True
     )
-    if msg:
-        conn = get_db()
-        conn.execute("UPDATE duels SET message_id = ? WHERE duel_id = ?", (msg.message_id, duel_id))
-        conn.commit(); conn.close()
-
-async def duel_accept_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; duel_id = q.data.split('_')[2]; user_id = str(q.from_user.id)
-    conn = get_db(); duel = conn.execute("SELECT * FROM duels WHERE duel_id = ?", (duel_id,)).fetchone()
-    if not duel or duel['status'] != 'waiting':
-        await safe_answer(q, "❌ Недоступно", show_alert=True); conn.close(); return
-    duel = dict(duel)
-    if user_id == duel['challenger_id']:
-        await safe_answer(q, "❌ Жди противника или нажми Отклонить", show_alert=True); conn.close(); return
-    if user_id != duel['opponent_id']:
-        await safe_answer(q, "❌ Этот вызов не тебе", show_alert=True); conn.close(); return
-    opponent = get_user(user_id)
-    if opponent['rys'] < duel['bet']:
-        await safe_answer(q, f"❌ Нужно {duel['bet']} RYS", show_alert=True); conn.close(); return
-    await safe_answer(q, "⚔️ Бой!")
-    update_user(user_id, rys=opponent['rys'] - duel['bet'])
-    challenger = get_user(duel['challenger_id'])
-    total = challenger['exp'] + opponent['exp'] + 100
-    winner_id = duel['challenger_id'] if random.random() < (challenger['exp']+50)/total else user_id
-    loser_id = user_id if winner_id == duel['challenger_id'] else duel['challenger_id']
-    w = get_user(winner_id); l = get_user(loser_id)
-    update_user(winner_id, rys=w['rys']+duel['prize'], duels_won=w['duels_won']+1)
-    update_user(loser_id, duels_lost=l['duels_lost']+1)
-    conn.execute(
-        "UPDATE duels SET status='finished', winner_id=?, finished_at=CURRENT_TIMESTAMP WHERE duel_id=?",
-        (winner_id, duel_id)
-    ); conn.commit(); conn.close()
-    ev = random.choice(["💥 Мощный удар!","🎯 Точный выстрел!","👊👊👊 Серия!","🔄 Контратака!","💫 Нокаут!","⚡ Молния!","🌪 Вихрь!"])
-    await safe_edit(q,
-        f"⚔️ ДУЭЛЬ\n👤 {challenger['first_name']} vs {opponent['first_name']}\n💵 {duel['bet']}\n{ev}\n🏆 {w['first_name']}\n💰 {duel['prize']} RYS"
-    )
-
-async def duel_decline_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query; duel_id = q.data.split('_')[2]; user_id = str(q.from_user.id)
-    conn = get_db(); duel = conn.execute("SELECT * FROM duels WHERE duel_id = ?", (duel_id,)).fetchone()
-    if not duel or duel['status'] != 'waiting' or user_id != duel['challenger_id']:
-        await safe_answer(q, "❌ Только создатель", show_alert=True); conn.close(); return
-    update_user(duel['challenger_id'], rys=get_user(duel['challenger_id'])['rys'] + duel['bet'])
-    conn.execute("UPDATE duels SET status='declined' WHERE duel_id=?", (duel_id,)); conn.commit(); conn.close()
-    await safe_edit(q, f"❌ Отменена\n💰 {duel['bet']} RYS возвращены")
-
-async def duel_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_answer(update.callback_query, "⚔️ Ставка x2\nШанс зависит от EXP\nУ создателя бонус", show_alert=True)
 
 # ==================== СЧЁТЧИК СООБЩЕНИЙ ====================
 
 async def count_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-    user_id = update.effective_user.id
-    username = update.effective_user.username
-    first_name = update.effective_user.first_name
-    ensure_user(user_id, username, first_name)
+    if not update.message or not update.message.text: return
+    ensure_user(update.effective_user.id, update.effective_user.username, update.effective_user.first_name)
     if len(update.message.text) >= 2:
-        user = get_user(user_id)
-        update_user(user_id, total_messages=user['total_messages'] + 1)
-        increment_weekly_message(user_id)
+        user = get_user(update.effective_user.id)
+        update_user(update.effective_user.id, total_messages=user['total_messages'] + 1)
+        increment_weekly_message(update.effective_user.id)
 
 # ==================== АДМИН-ПАНЕЛЬ ====================
 
@@ -640,19 +693,19 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📋 Реестр", callback_data="admin_list")],
         [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
         [InlineKeyboardButton("🏦 Банк", callback_data="admin_bank_info")],
-        [InlineKeyboardButton("🗑 Сбросить все игры", callback_data="admin_reset_games")]
+        [InlineKeyboardButton("🗑 Сбросить игры", callback_data="admin_reset_games")]
     ]
     await safe_reply(update, "🛡 АДМИН-ПАНЕЛЬ", reply_markup=InlineKeyboardMarkup(kb))
 
 async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    if q.from_user.id != ADMIN_ID:
-        await safe_answer(q, "❌ Нет доступа"); return
+    if q.from_user.id != ADMIN_ID: await safe_answer(q, "❌"); return
     await safe_answer(q, "")
-    p = q.data.split('_'); a = p[1]
+    p = q.data.split('_')
+    a = p[1]
     if a == 'info':
         u = get_user(p[2]); w = get_weekly_messages()
-        await safe_edit(q, f"📊 {u['first_name']}\n💰{u['rys']} ⭐{u['rep']} ✨{u['exp']}\n🎖{get_rank(u['exp'])}\n⚔️{u['duels_won']}/{u['duels_lost']}\n💬{w.get(p[2],0)}")
+        await safe_edit(q, f"📊 {u['first_name']}\n💰{u['rys']} ⭐{u['rep']} ✨{u['exp']}\n🎖{get_rank(u['exp'])}\n💬{w.get(p[2],0)}")
     elif a in ['add','sub']:
         context.user_data['admin_action'] = {'tid': p[3], 'cur': p[2], 'op': a}
         await safe_edit(q, f"✏️ {'+' if a=='add' else '-'}{p[2].upper()}")
@@ -680,7 +733,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📋 Реестр", callback_data="admin_list")],
             [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")],
             [InlineKeyboardButton("🏦 Банк", callback_data="admin_bank_info")],
-            [InlineKeyboardButton("🗑 Сбросить все игры", callback_data="admin_reset_games")]
+            [InlineKeyboardButton("🗑 Сбросить игры", callback_data="admin_reset_games")]
         ]
         await safe_edit(q, "🛡 АДМИН-ПАНЕЛЬ", reply_markup=InlineKeyboardMarkup(kb))
     elif a == 'bank':
@@ -692,10 +745,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif a == 'reset':
         conn = get_db()
         c = conn.execute("UPDATE cases SET status='finished' WHERE status IN ('waiting','active')").rowcount
-        d = conn.execute("UPDATE duels SET status='finished' WHERE status='waiting'").rowcount
         conn.commit(); conn.close()
-        await safe_edit(q, f"✅ Сброшено: {c} кейсов, {d} дуэлей")
-    elif a == 'broadcast': context.user_data['broadcast'] = True; await safe_edit(q, "📢 Напиши сообщение для рассылки:")
+        await safe_edit(q, f"✅ Сброшено кейсов: {c}")
+    elif a == 'broadcast': context.user_data['broadcast'] = True; await safe_edit(q, "📢 Напиши сообщение:")
 
 async def handle_admin_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID: return
@@ -742,31 +794,26 @@ async def weekly_reset():
     conn.commit(); conn.close()
     logger.info(f"Сброс: {dist} RYS")
 
-# ==================== ОБРАБОТЧИК ОШИБОК С ПОВТОРОМ ====================
+# ==================== ОБРАБОТЧИК ОШИБОК ====================
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     err = context.error
     if isinstance(err, (NetworkError, TimedOut)):
-        logger.error(f"⏰ Таймаут — повтор через 5 сек")
+        logger.error(f"⏰ Таймаут — повтор")
         await asyncio.sleep(5)
         if update:
-            try:
-                await context.application.process_update(update)
-            except Exception as e:
-                logger.error(f"❌ Повтор не удался: {e}")
+            try: await context.application.process_update(update)
+            except Exception as e: logger.error(f"❌ Повтор не удался: {e}")
     elif isinstance(err, RetryAfter):
         await asyncio.sleep(err.retry_after)
         if update:
-            try:
-                await context.application.process_update(update)
-            except Exception as e:
-                logger.error(f"❌ Повтор не удался: {e}")
+            try: await context.application.process_update(update)
+            except: pass
 
 # ==================== ЗАПУСК ====================
 
 if __name__ == "__main__":
-    if not TOKEN:
-        logger.error("❌ Нет токена"); exit(1)
+    if not TOKEN: logger.error("❌ Нет токена"); exit(1)
     
     app = Application.builder().token(TOKEN).connect_timeout(30).read_timeout(30).write_timeout(30).build()
     app.add_error_handler(error_handler)
@@ -782,7 +829,6 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("balance", balance_cmd))
     app.add_handler(CommandHandler("send", send_rys))
     app.add_handler(CommandHandler("case", case_game))
-    app.add_handler(CommandHandler("duel", duel_create))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top_weekly))
     app.add_handler(CommandHandler("admin", admin_panel))
@@ -791,14 +837,11 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(case_decline_callback, pattern="^case_decline_"))
     app.add_handler(CallbackQueryHandler(handle_case_open, pattern="^case_open_"))
     app.add_handler(CallbackQueryHandler(case_info_callback, pattern="^case_info_"))
-    app.add_handler(CallbackQueryHandler(duel_accept_callback, pattern="^duel_accept_"))
-    app.add_handler(CallbackQueryHandler(duel_decline_callback, pattern="^duel_decline_"))
-    app.add_handler(CallbackQueryHandler(duel_info_callback, pattern="^duel_info_"))
     app.add_handler(CallbackQueryHandler(admin_callback, pattern="^admin_"))
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.REPLY, rep_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, count_message))
     app.add_handler(MessageHandler(filters.TEXT & filters.User(ADMIN_ID), handle_admin_text))
     
-    logger.info("✅ Бот запущен")
+    logger.info("Бот запущен")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
